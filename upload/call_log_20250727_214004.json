@@ -1,0 +1,26 @@
+[
+    {
+        "phone_number": "+123456789",
+        "call_time": "2025-07-27 21:39:51",
+        "duration": "0s",
+        "status": "Status: Interrupted"
+    },
+    {
+        "phone_number": "+678901234",
+        "call_time": "2025-07-27 21:39:54",
+        "duration": "0s",
+        "status": "Status: Interrupted"
+    },
+    {
+        "phone_number": "+123450000",
+        "call_time": "2025-07-27 21:39:57",
+        "duration": "0s",
+        "status": "Status: Interrupted"
+    },
+    {
+        "phone_number": "+999991111",
+        "call_time": "2025-07-27 21:40:00",
+        "duration": "0s",
+        "status": "Status: Interrupted"
+    }
+]

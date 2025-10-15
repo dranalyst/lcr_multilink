@@ -1,0 +1,30 @@
+[
+    {
+        "Anum": "+33612345678",
+        "Bnum": "+123456789",
+        "call_time": "2025-07-29T00:10:34+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "+33612345678",
+        "Bnum": "+678901234",
+        "call_time": "2025-07-29T00:10:37+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "+33612345678",
+        "Bnum": "+123450000",
+        "call_time": "2025-07-29T00:10:41+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "+33612345678",
+        "Bnum": "+999991111",
+        "call_time": "2025-07-29T00:10:44+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    }
+]

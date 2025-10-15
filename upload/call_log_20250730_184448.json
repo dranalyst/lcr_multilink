@@ -1,0 +1,30 @@
+[
+    {
+        "Anum": "111222333",
+        "Bnum": "+123456789",
+        "call_time": "2025-07-30T18:44:35+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "111222333",
+        "Bnum": "+678901234",
+        "call_time": "2025-07-30T18:44:38+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "111222333",
+        "Bnum": "+123450000",
+        "call_time": "2025-07-30T18:44:41+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "111222333",
+        "Bnum": "+999991111",
+        "call_time": "2025-07-30T18:44:44+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    }
+]

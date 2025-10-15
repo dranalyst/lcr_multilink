@@ -1,0 +1,23 @@
+[
+    {
+        "Anum": "+777888999",
+        "Bnum": "+223456789",
+        "call_time": "2025-08-17T19:03:58+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "+777888999",
+        "Bnum": "+878901234",
+        "call_time": "2025-08-17T19:04:01+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    },
+    {
+        "Anum": "+777888999",
+        "Bnum": "+923450000",
+        "call_time": "2025-08-17T19:04:04+02:00",
+        "duration": "0",
+        "status": "Status: Interrupted"
+    }
+]
