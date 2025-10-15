@@ -2,6 +2,7 @@ from datetime import timedelta, datetime, timezone
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.functions import now
 from starlette import status
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
@@ -46,9 +47,12 @@ def get_db():
 # HELPERS
 # --------------------------------------------------------------------
 def create_access_token(phoneNumber: str, user_id: int, expires_delta: timedelta):
-    encode = {"phone": phoneNumber, "id": user_id}
-    expires = datetime.now(timezone.utc) + expires_delta
-    encode.update({"exp": expires})
+    now = datetime.now(timezone.utc)  # ✅ timezone-aware UTC
+    encode = {"phone": phoneNumber, "id": user_id,
+              "iat": int(now.timestamp()),
+              "exp": now + expires_delta}
+    # expires = datetime.now(timezone.utc) + expires_delta
+    # encode.update({"exp": expires})
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -94,7 +98,9 @@ def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Session 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: int = payload.get("id")
-        if user_id is None:
+        issued_at = payload.get("iat")
+
+        if user_id is None or issued_at is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials."
@@ -111,6 +117,16 @@ def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Session 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found."
         )
+
+    # Compare token issue time with last logout
+    if user.last_logout_date:
+        token_time = datetime.fromtimestamp(issued_at, timezone.utc)
+        if token_time < user.last_logout_date:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired (token revoked after logout)"
+                )
+
     return user
 
 
@@ -144,8 +160,41 @@ async def login_for_access_token(
         user_id=user.id,
         expires_delta=timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     )
+    user.last_login_date = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
 
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    current_user: Annotated[PhoneUsers, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    """
+    Logout endpoint.
+    - Marks user as offline (ob_readiness / ib_readiness = False)
+    - Updates last logout timestamp.
+    - Uses current_user from JWT to ensure secure logout.
+    """
+
+    now = datetime.now(timezone.utc)
+
+    # Record logout time
+    current_user.last_logout_date = now
+
+    # Mark user as not ready for test calls
+    current_user.ob_readiness = False
+    current_user.last_ob_readiness_date = now
+    current_user.ib_readiness = False
+    current_user.last_ib_readiness_date = now
+
+    db.add(current_user)
+    db.commit()
+
+    # Returning 204 means “no content”, which is REST-correct for logout
+    return {"message": "Logged out successfully"}
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
