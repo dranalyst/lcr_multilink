@@ -21,42 +21,61 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-op.create_table(
-        'phoneusers',
-        sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column('phoneNumber', sa.String(length=32), nullable=False),
+op.add_column('inbound_cdr_logs', sa.Column('normalized_a_num', sa.String(32), nullable=False))
+op.add_column('inbound_cdr_logs', sa.Column('a_country', sa.String(100), nullable=False, server_default='Unknown'))
+op.add_column('inbound_cdr_logs', sa.Column('a_operator_name', sa.String(100), nullable=False, server_default='Unknown'))
+op.add_column('inbound_cdr_logs', sa.Column('b_num', sa.String(32), nullable=False))
+op.add_column('inbound_cdr_logs', sa.Column('b_country', sa.String(100), nullable=False, server_default='Unknown'))
+op.add_column('inbound_cdr_logs', sa.Column('b_operator_name', sa.String(100), nullable=False, server_default='Unknown'))
+op.add_column('inbound_cdr_logs', sa.Column('starttime', sa.DateTime(timezone=True), nullable=False))
+op.add_column('inbound_cdr_logs', sa.Column('duration', sa.Integer(), nullable=False))
+op.add_column('inbound_cdr_logs', sa.Column('status', sa.String(30), nullable=False))
+op.add_column('inbound_cdr_logs', sa.Column('uploaded_date', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()))
 
-        sa.Column('country_iso2', sa.String(length=2), nullable=False, server_default='--'),
-        sa.Column('country_name', sa.String(length=100), nullable=False, server_default='Unknown'),
-        sa.Column('country_dial_code', sa.String(length=6), nullable=False, server_default='+++'),
-        sa.Column('operator_name', sa.String(length=100), nullable=False, server_default='Unknown'),
 
-        sa.Column('createdOn', sa.DateTime(timezone=True), server_default=sa.func.now()),
-
-        sa.Column('registration_status', sa.Boolean(), server_default=sa.text('true'), nullable=False),
-        sa.Column('last_registration_status_change', sa.DateTime(timezone=True),
-                  server_default=sa.func.now(), nullable=False),
-
-        sa.Column('call_direction', sa.Boolean(), server_default=sa.text('false'), nullable=False),
-        sa.Column('last_call_direction_change', sa.DateTime(timezone=True), nullable=True),
-
-        sa.Column('hashed_password', sa.String(length=255), nullable=False),
-        sa.Column('user_role', sa.String(length=50), server_default=sa.text("'basic'"), nullable=False),
-
-        sa.Column('last_login_date', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('last_logout_date', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('user_type', sa.Integer(), server_default=sa.text('0'), nullable=False),
-        sa.Column('automatic_mode', sa.Boolean(), server_default=sa.text('false'), nullable=False),
-
-        sa.Column('device_uuid', sa.dialects.postgresql.UUID(as_uuid=True),
-                  server_default=sa.text("gen_random_uuid()"), unique=True, nullable=False),
-        sa.Column('last_login_ip', sa.String(length=45), nullable=True)
-    )
+# op.create_table(
+#         'phoneusers',
+#         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
+#         sa.Column('phoneNumber', sa.String(length=32), nullable=False),
+#
+#         sa.Column('country_iso2', sa.String(length=2), nullable=False, server_default='--'),
+#         sa.Column('country_name', sa.String(length=100), nullable=False, server_default='Unknown'),
+#         sa.Column('country_dial_code', sa.String(length=6), nullable=False, server_default='+++'),
+#         sa.Column('operator_name', sa.String(length=100), nullable=False, server_default='Unknown'),
+#
+#         sa.Column('createdOn', sa.DateTime(timezone=True), server_default=sa.func.now()),
+#
+#         sa.Column('registration_status', sa.Boolean(), server_default=sa.text('true'), nullable=False),
+#         sa.Column('last_registration_status_change', sa.DateTime(timezone=True),
+#                   server_default=sa.func.now(), nullable=False),
+#
+#         sa.Column('call_direction', sa.Boolean(), server_default=sa.text('false'), nullable=False),
+#         sa.Column('last_call_direction_change', sa.DateTime(timezone=True), nullable=True),
+#
+#         sa.Column('hashed_password', sa.String(length=255), nullable=False),
+#         sa.Column('user_role', sa.String(length=50), server_default=sa.text("'basic'"), nullable=False),
+#
+#         sa.Column('last_login_date', sa.DateTime(timezone=True), nullable=True),
+#         sa.Column('last_logout_date', sa.DateTime(timezone=True), nullable=True),
+#         sa.Column('user_type', sa.Integer(), server_default=sa.text('0'), nullable=False),
+#         sa.Column('automatic_mode', sa.Boolean(), server_default=sa.text('false'), nullable=False),
+#
+#         sa.Column('device_uuid', sa.dialects.postgresql.UUID(as_uuid=True),
+#                   server_default=sa.text("gen_random_uuid()"), unique=True, nullable=False),
+#         sa.Column('last_login_ip', sa.String(length=45), nullable=True)
+#     )
 
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_column('inbound_cdr_logs', 'b_num')
+    op.drop_column('inbound_cdr_logs', 'starttime')
+    op.drop_column('inbound_cdr_logs', 'duration')
+    op.drop_column('inbound_cdr_logs', 'status')
+    op.drop_column('inbound_cdr_logs', 'uploaded_date')
+
+
     # op.drop_column('phoneusers', 'id')
     # op.drop_column('phoneusers', 'phoneNumber')
     # op.drop_column('phoneusers', 'createdOn')

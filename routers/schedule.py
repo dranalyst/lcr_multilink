@@ -36,7 +36,7 @@ async def get_numbers(current_user: Annotated[PhoneUsers, Depends(get_current_us
     # distinct bNums to check readiness
     bnums = list({s.bNum for s in schedules if s.bNum})
 
-    # Map: phone -> (ib_ready, user_type)
+    # Map: phone -> (call_direction, user_type)
     pu_map = {}
     if bnums:
         rows = (

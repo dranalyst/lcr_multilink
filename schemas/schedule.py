@@ -9,7 +9,6 @@ class ScheduleOut(BaseModel):
     status: int
     schedule_sync_date: Optional[datetime] = None
     status_change_date: Optional[datetime] = None
-    inbound_status: int
 
     class Config:
         orm_mode = True
