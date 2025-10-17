@@ -40,11 +40,11 @@ async def get_numbers(current_user: Annotated[PhoneUsers, Depends(get_current_us
     pu_map = {}
     if bnums:
         rows = (
-            db.query(PhoneUsers.phoneNumber, PhoneUsers.ib_readiness, PhoneUsers.user_type)
+            db.query(PhoneUsers.phoneNumber, PhoneUsers.call_direction, PhoneUsers.user_type)
             .filter(PhoneUsers.phoneNumber.in_(bnums))
             .all()
         )
-        pu_map = {phone: (ib_ready, user_type) for phone, ib_ready, user_type in rows}
+        pu_map = {phone: (call_direction, user_type) for phone, call_direction, user_type in rows}
 
     filtered = []
     for s in schedules:
@@ -56,12 +56,12 @@ async def get_numbers(current_user: Annotated[PhoneUsers, Depends(get_current_us
                 filtered.append(s)
             continue
 
-        ib_ready, user_type = info
+        call_direction, user_type = info
         # Treat None as not-0 to be safe on legacy rows
         user_type = 0 if user_type == 0 else 1
 
         if user_type == 0:
-            if ib_ready:
+            if call_direction == 0:
                 filtered.append(s)        # ok
             else:
                 pass                      # explicit exclude when ib_ready is False
@@ -83,45 +83,6 @@ async def get_numbers(current_user: Annotated[PhoneUsers, Depends(get_current_us
         for r in filtered
     ]
 
-
-# @router.get("/bnumbers")
-# async def get_numbers(
-#     user_phone: str,
-#     db: Session = Depends(get_db)
-# ):
-#     """
-#         Fetch B-numbers assigned to a given user (aNum).
-#         Returns all records (status -1, 0, 1) to let frontend decide:
-#           - status = 0 → pending (to call)
-#           - status = 1 → done (checked)
-#           - status = -1 → skipped (crossed)
-#         """
-#
-#     records = (
-#         db.query(Schedule)
-#         .filter(Schedule.aNum == user_phone, Schedule.status.in_([-1, 0]))
-#         .order_by(Schedule.id.asc())
-#         .all()
-#     )
-#
-#     if not records:
-#         return []
-#
-#     # update schedule_sync_date for all retrieved records
-#     now = datetime.now(timezone.utc)
-#     for r in records:
-#         r.schedule_sync_date = now
-#     db.commit()
-#
-#     return [
-#         {
-#             "id": r.id,
-#             "aNum": r.aNum,
-#             "bNum": r.bNum,
-#             "status": r.status
-#         }
-#         for r in records
-#     ]
 
 
 @router.get("/inboundcalls")
@@ -157,28 +118,3 @@ async def mark_number_called(schedule_id: int,
     db.commit()
 
     return {"status": "updated", "id": record.id}
-
-
-
-##@router.get("/numbers")
-##def get_numbers(db: Session = Depends(get_db)):
-##    rows = db.query(Schedule).all()
-##    return [row.bNum for row in rows if row.bNum]
-
-
-#from fastapi import APIRouter
-#from database import get_pg_connection
-#
-#import psycopg2
-#
-#router = APIRouter()
-#
-#@router.get("/numbers")
-#def get_numbers():
-#    conn = get_pg_connection()
-#    cur = conn.cursor()
-#    cur.execute('SELECT "bNum" FROM "testCall"."schedule"')
-#    rows = cur.fetchall()
-#    cur.close()
-#    conn.close()
-#    return [row[0] for row in rows]

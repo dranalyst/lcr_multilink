@@ -61,7 +61,7 @@ def authenticate_phoneuser(username: str, password: str, db: Session):
     user = (
         db.query(PhoneUsers)
         .filter(PhoneUsers.phoneNumber == username)
-        .filter(PhoneUsers.subscription_status.is_(True))
+        .filter(PhoneUsers.registration_status.is_(True))
         .first()
     )
 
@@ -144,7 +144,7 @@ async def login_for_access_token(
     Authenticates a user using phone number (as username) and password.
     Returns a signed JWT token if successful.
     """
-
+    client_host = request.client.host  # ✅ IP address here
     user = authenticate_phoneuser(form_data.username, form_data.password, db)
     if not user:
         # ⏱ Delay slightly to make automated brute force slower
@@ -155,19 +155,19 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(
-        phoneNumber=user.phoneNumber,
-        user_id=user.id,
-        expires_delta=timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    token = create_access_token(phoneNumber = user.phoneNumber,
+                                user_id = user.id,
+                                expires_delta = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     )
     user.last_login_date = datetime.now(timezone.utc)
+    user.last_login_ip = client_host
     db.add(user)
     db.commit()
 
     return {"access_token": token, "token_type": "bearer"}
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.put("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
     current_user: Annotated[PhoneUsers, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)]

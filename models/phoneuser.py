@@ -1,38 +1,13 @@
     # models/phoneuser.py
 import phonenumbers
+from phonenumbers import carrier
 import pycountry
-from sqlalchemy import Column, String, DateTime, Integer, func, Boolean
+from sqlalchemy import Column, String, DateTime, Integer, func, Boolean, text
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 from datetime import datetime
-
-# class PhoneUsers(Base):
-#     __tablename__ = "phoneusers"
-#      # __table_args__ = {"schema": "public"}  # <-- use your schema name here
-#
-#     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-#     phoneNumber: Mapped[str] = mapped_column("phoneNumber", String(32), nullable=False, unique=False)
-#     createdOn: Mapped[datetime] = mapped_column("createdOn", DateTime(timezone=True), server_default=func.now())
-#     status: Mapped[bool] = mapped_column("subscription_status", Boolean(), nullable=False, unique=False)
-#     last_status_change_date: Mapped["datetime"] = mapped_column(
-#         DateTime(timezone=True),server_default=func.now(),    # Postgres side default
-#         nullable=False)
-#
-#     ob_readiness: Mapped[bool] = mapped_column(
-#         Boolean(), server_default="false", nullable=False)
-#
-#     last_ob_readiness_date: Mapped["datetime"] = mapped_column(
-#         DateTime(timezone=True), nullable=True)   # defaults to NULL
-#
-#     ib_readiness: Mapped[bool] = mapped_column(
-#         Boolean(), server_default="false", nullable=False)
-#
-#     last_ib_readiness_date: Mapped["datetime"] = mapped_column(
-#         DateTime(timezone=True), nullable=True)    # defaults to NULL
-#
-#     hashed_password: Mapped[str] = mapped_column(
-#         String(255), nullable=False)   # bcrypt hashes ~60 chars, 255 gives room for others
-
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
 
 class PhoneUsers(Base):
     __tablename__ = "phoneusers"
@@ -43,17 +18,15 @@ class PhoneUsers(Base):
     country_iso2: Mapped[str] = mapped_column(String(2), nullable=False, server_default="--")
     country_name: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Unknown")
     country_dial_code: Mapped[str] = mapped_column(String(6), nullable=False, server_default="+++")
+    operator_name: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Unknown")
 
     createdOn: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    subscription_status: Mapped[bool] = mapped_column("subscription_status", Boolean(), server_default="true", nullable=False, unique=False)
-    last_status_change_date: Mapped[datetime] = mapped_column("last_subs_status_change_date", DateTime(timezone=True), server_default=func.now(), nullable=False)
+    registration_status: Mapped[bool] = mapped_column("registration_status", Boolean(), server_default="true", nullable=False, unique=False)
+    last_registration_status_change: Mapped[datetime] = mapped_column("last_registration_status_change", DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    ob_readiness: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False)
-    last_ob_readiness_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    ib_readiness: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False)
-    last_ib_readiness_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    call_direction: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False)
+    last_call_direction_change: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -62,6 +35,10 @@ class PhoneUsers(Base):
     last_login_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_logout_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     user_type: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+
+    device_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),server_default=text("gen_random_uuid()"),
+        unique=True,nullable=False)
+    last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
 
     def __init__(self, **kwargs):
@@ -78,6 +55,9 @@ class PhoneUsers(Base):
                 self.country_iso2 = iso2 or "--"
                 self.country_name = country.name if country else "Unknown"
                 self.country_dial_code = f"+{num.country_code}" if num.country_code else "+++"
+                op_name = carrier.name_for_number(num, "en")
+                self.operator_name = op_name or "Unknown"
+
             except Exception:
                 self.country_iso2 = "--"
                 self.country_name = "Unknown"
