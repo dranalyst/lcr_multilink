@@ -35,6 +35,8 @@ class PhoneUsers(Base):
     last_login_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_logout_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     user_type: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    automatic_mode: Mapped[bool] = mapped_column("automatic_mode", Boolean(), server_default="False",
+                                                      nullable=False, unique=False)
 
     device_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),server_default=text("gen_random_uuid()"),
         unique=True,nullable=False)

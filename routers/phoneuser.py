@@ -8,8 +8,8 @@ from schemas.phoneuser import PhoneUserCreate
 from models.phoneuser import PhoneUsers
 from database import get_db, SessionLocal
 import phonenumbers
-import datetime
-from datetime import timedelta, timezone
+# import datetime
+from datetime import timedelta, timezone, datetime
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.dialects import postgresql
@@ -23,7 +23,7 @@ router = APIRouter(
 db_dependency = Annotated[Session, Depends(get_db)]
 
 
-@router.put("/call_direction", status_code=status.HTTP_200_OK)
+@router.put("/set_call_direction", status_code=status.HTTP_200_OK)
 async def set_call_direction_flag(
     selectedDirection: bool,   # True = outbound, False = inbound
     current_user: Annotated[PhoneUsers, Depends(get_current_user)],
@@ -63,6 +63,68 @@ async def set_call_direction_flag(
         "call_direction": current_user.call_direction,
         "last_changed": current_user.last_call_direction_change.isoformat(),
     }
+
+
+
+# @router.get("/get_call_direction", status_code=status.HTTP_200_OK)
+# async def get_call_direction_flag(
+#     current_user: Annotated[PhoneUsers, Depends(get_current_user)],
+#     db: Annotated[Session, Depends(get_db)]
+# ):
+#     """
+#     Get the user's call_direction flag (True = outbound, False = inbound)
+#     """
+#
+#     result = (
+#         db.query(PhoneUsers.call_direction)
+#         .filter(PhoneUsers.phoneNumber == current_user.phoneNumber
+#                 , PhoneUsers.registration_status == True)
+#         .first()
+#     )
+#
+#     if not result:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="User has invalid call direction. Please contact an administrator"
+#         )
+#
+#     # unpack the tuple returned by .first()
+#     call_direction = result[0]
+#
+#     return {"call_direction": call_direction}
+
+
+
+@router.put("/mode", status_code=status.HTTP_200_OK)
+async def switch_user_mode(
+    automatic_mode: bool,
+    current_user: Annotated[PhoneUsers, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """
+    Toggle between manual and automatic modes.
+    Only allowed for normal users (user_type == 0).
+    """
+
+    # 🧱 Rule: Only normal users can switch modes themselves
+    if current_user.user_type != 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only normal users may switch between manual and automatic modes."
+        )
+
+    # ✅ Update user mode
+    current_user.automatic_mode = automatic_mode
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
+    mode_label = "Automatic" if automatic_mode else "Manual"
+    return {
+        "message": f"Switched to {mode_label} mode successfully.",
+        "automatic_mode": current_user.automatic_mode
+    }
+
 
 
 # def validate_phone_dep(phone: str) -> str:

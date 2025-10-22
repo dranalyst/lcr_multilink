@@ -8,13 +8,15 @@ from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from jose import jwt, JWTError
 import phonenumbers
-from database import SessionLocal
+from database import get_db
 from models import PhoneUsers
 from schemas.phoneuser import PhoneUserCreate
 from pydantic import BaseModel
 from slowapi.util import get_remote_address
 from core.rate_limit import limiter
 import asyncio
+import uuid
+
 
 router = APIRouter(
     prefix="/auth",
@@ -35,12 +37,12 @@ oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
 # --------------------------------------------------------------------
 # DEPENDENCIES
 # --------------------------------------------------------------------
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# def get_db():
+#     db = SessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()
 
 
 # --------------------------------------------------------------------
@@ -94,7 +96,8 @@ class ChangePasswordRequest(BaseModel):
 
 
 # ✅ Helper to decode and verify token
-def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Session = Depends(get_db)):
+def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Annotated[Session, Depends(get_db)]):
+    """Decode JWT and return a DB-bound user object (no new session)."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: int = payload.get("id")
@@ -133,6 +136,8 @@ def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Session 
 # --------------------------------------------------------------------
 # ENDPOINTS
 # --------------------------------------------------------------------
+
+
 @router.post("/token")
 @limiter.limit("5/minute")   # 🚫 max 5 login attempts per IP per minute
 async def login_for_access_token(
@@ -155,7 +160,7 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(phoneNumber = user.phoneNumber,
+    token = create_access_token( phoneNumber = user.phoneNumber,
                                 user_id = user.id,
                                 expires_delta = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     )
@@ -174,7 +179,7 @@ async def logout(
 ):
     """
     Logout endpoint.
-    - Marks user as offline (ob_readiness / ib_readiness = False)
+    - Marks user as offline (call_Direction = False)
     - Updates last logout timestamp.
     - Uses current_user from JWT to ensure secure logout.
     """
@@ -185,16 +190,14 @@ async def logout(
     current_user.last_logout_date = now
 
     # Mark user as not ready for test calls
-    current_user.ob_readiness = False
-    current_user.last_ob_readiness_date = now
-    current_user.ib_readiness = False
-    current_user.last_ib_readiness_date = now
+    current_user.call_direction = False
+    current_user.last_call_direction_change = now
 
-    db.add(current_user)
     db.commit()
 
     # Returning 204 means “no content”, which is REST-correct for logout
     return {"message": "Logged out successfully"}
+
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

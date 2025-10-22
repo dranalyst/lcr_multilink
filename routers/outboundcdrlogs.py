@@ -32,17 +32,17 @@ async def upload_logs(payload: Union[OutboundCDRLog,List[OutboundCDRLog]],
     logs_to_insert = payload if isinstance(payload, list) else [payload]
 
 
-    for log in logs_to_insert:
-        if log.aNum != current_user.phoneNumber:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Unauthorized: log aNum {log.aNum} does not match your account.",
-            )
+    # for log in logs_to_insert:
+    #     if log.aNum != current_user.phoneNumber:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail=f"Unauthorized: log aNum {log.aNum} does not match your account.",
+    #         )
 
     try:
         for log in logs_to_insert:
             db_log = OutboundLogs(
-                aNum=current_user.phoneNumber,
+                aNum=log.aNum,
                 bNum=log.bNum,
                 starttime=log.starttime,
                 duration=log.duration,
