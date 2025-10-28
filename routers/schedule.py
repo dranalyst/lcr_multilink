@@ -1,18 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models.schedule import Schedule
 from models.phoneuser import PhoneUsers
-from typing import List, Annotated
+from typing import List, Annotated, Literal
 from datetime import datetime, timezone
 from .auth import get_current_user
-from schemas.schedule import ScheduleOut
+from schemas.schedule import ScheduleOut, MarkCalledBatchPayload, UpdateInboundStatusPayload
+
 
 router = APIRouter(
     prefix="/schedule",
     tags=["schedule"]
 )
-
 
 
 @router.get("/bnumbers")
@@ -27,7 +27,8 @@ async def get_numbers(
       - If bNum missing in PhoneUsers OR user_type!=0 → include ONLY if status==0.
       - If bNum has PhoneUsers(user_type==0 AND call_direction==True) → exclude.
     """
-    current_user = db.merge(current_user)
+
+    # current_user = db.merge(current_user)
     user_phone = current_user.phoneNumber
 
     # ✅ Step 1: Fetch more than limit to allow for filtering
@@ -209,3 +210,99 @@ async def mark_number_called(schedule_id: int,
     db.commit()
 
     return {"status": "updated", "id": record.id}
+
+
+
+@router.put("/mark-called-batch")
+async def mark_batch_called(payload: MarkCalledBatchPayload,
+                            current_user: Annotated[PhoneUsers, Depends(get_current_user)],
+                            db: Session = Depends(get_db)):
+    # Exit early if the client sent an empty list
+    if not payload.schedule_ids:
+        return {"status": "no_ids_provided", "updated_count": 0}
+
+    # Fetch all records from the DB that match the provided IDs in one query
+    records_to_update = db.query(Schedule).filter(Schedule.id.in_(payload.schedule_ids)).all()
+
+    # Security Check: Ensure all requested records belong to the current user.
+    # If even one record does not belong to them, reject the entire transaction.
+    for record in records_to_update:
+        if record.aNum != current_user.phoneNumber:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You are not authorized to update schedule ID {record.id}."
+            )
+
+    # Validation Check: Ensure all IDs provided by the client were found in the DB.
+    if len(records_to_update) != len(set(payload.schedule_ids)):
+        raise HTTPException(
+            status_code=404,
+            detail="One or more of the provided schedule IDs were not found."
+        )
+
+    # If all checks pass, update the status and timestamp for each record
+    update_time = datetime.now(timezone.utc)
+    for record in records_to_update:
+        record.status = 1
+        record.status_change_date = update_time
+
+    # Commit all changes to the database in a single transaction
+    db.commit()
+
+    updated_ids = [record.id for record in records_to_update]
+
+    return {
+        "status": "batch_updated",
+        "updated_count": len(updated_ids),
+        "updated_ids": updated_ids
+    }
+
+@router.put("/update_ib_calls", status_code=status.HTTP_200_OK)
+async def update_inbound_call_status(
+        payload: UpdateInboundStatusPayload,  # Use the Pydantic model as an argument
+        current_user: Annotated[PhoneUsers, Depends(get_current_user)],
+        db: Session = Depends(get_db)
+):
+    """
+    Updates the status of inbound call schedules for a user.
+    - If status = -1 is provided, it finds active calls (status=0) and cancels them.
+    - If status = 0 is provided, it finds canceled calls (status=-1) and reactivates them.
+    """
+    new_status = payload.status
+
+    # 2. Determine which records to find based on the desired new status.
+    if new_status == -1:
+        # If we are canceling, we need to find active schedules (status 0).
+        status_to_find = 0
+        action_verb = "canceled"
+    else:  # new_status will be 0
+        # If we are reactivating, we need to find already canceled schedules (status -1).
+        status_to_find = -1
+        action_verb = "reactivated"
+
+    # 3. Find all schedules for this user that have the status we need to change.
+    records_to_update = (
+        db.query(Schedule)
+        .filter(Schedule.bNum == current_user.phoneNumber, Schedule.status == status_to_find)
+        .all()
+    )
+
+    if not records_to_update:
+        # Use HTTP 204 No Content, which is more appropriate when the request is valid
+        # but there's nothing to update.
+        raise HTTPException(
+            status_code=status.HTTP_204_NO_CONTENT
+        )
+
+    # 4. Update all found records to the new status in one transaction.
+    for record in records_to_update:
+        record.status = new_status
+        record.status_change_date = datetime.now(timezone.utc)
+
+    db.commit()
+
+    # 5. Return a dynamic success message.
+    return {
+        "message": f"{len(records_to_update)} scheduled inbound calls {action_verb} successfully.",
+        "b_number": current_user.phoneNumber
+    }

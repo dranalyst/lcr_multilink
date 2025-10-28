@@ -10,21 +10,21 @@ from sqlalchemy.orm import declarative_base
 
 # metadata = MetaData(schema="testCall")      # default schema for all tables
 # Connection details (adjust if needed)
-DB_NAME = "testCaller"
-DB_USER = "postgres"
-DB_PASS = "c6emcpostgres"
-DB_HOST = "localhost"
-DB_PORT = "5432"
+# DB_NAME = "testCallerxxx"
+# DB_USER = "postgres123"
+# DB_PASS = ""
+# DB_HOST = "localhost"
+# DB_PORT = "5432"
 
 # psycopg2 (for raw SQL if still needed)
-def get_pg_connection():
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        host=DB_HOST,
-        port=DB_PORT
-    )
+# def get_pg_connection():
+#     return psycopg2.connect(
+#         dbname=DB_NAME,
+#         user=DB_USER,
+#         password=DB_PASS,
+#         host=DB_HOST,
+#         port=DB_PORT
+#     )
 
 # DB URL
 DATABASE_URL = "postgresql://postgres:c6emcpostgres@localhost:5432/testCaller"
