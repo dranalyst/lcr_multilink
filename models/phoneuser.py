@@ -3,7 +3,11 @@ import phonenumbers
 from phonenumbers import carrier
 import pycountry
 from sqlalchemy import Column, String, DateTime, Integer, func, Boolean, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.functions import now
+from sqlalchemy.sql.sqltypes import BigInteger, Text
+from sqlalchemy.sql.schema import ForeignKey
+
 from database import Base
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
@@ -68,3 +72,25 @@ class PhoneUsers(Base):
             self.country_iso2 = "--"
             self.country_name = "Unknown"
             self.country_dial_code = "+++"
+
+
+
+# class UserSession(Base):
+#     __tablename__ = "user_sessions"
+#
+#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+#     user_id = Column(BigInteger, ForeignKey("phoneusers.id", ondelete="CASCADE"), nullable=False)
+#     device_id = Column(Text, nullable=False)  # This will be the app_install_id
+#
+#     # We will skip refresh_token_hash for now, but the column is ready for the future
+#     # refresh_token_hash = Column(Text, unique=True, nullable=False)
+#
+#     created_at = Column(DateTime(timezone=True), server_default=now())
+#     last_seen_at = Column(DateTime(timezone=True), server_default=now())
+#     expires_at = Column(DateTime(timezone=True), nullable=False)
+#     revoked_at = Column(DateTime(timezone=True), nullable=True)
+#
+#     reason_revoked = Column(Text, nullable=True)
+#
+#     # This creates the link back to the PhoneUsers model
+#     user = relationship("PhoneUsers", back_populates="sessions")

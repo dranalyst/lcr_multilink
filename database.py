@@ -1,35 +1,12 @@
-# database.py
-
-import psycopg2
 from sqlalchemy import create_engine
-# from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-# from sqlalchemy import MetaData
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 
+# Import the settings object
+from config import settings
 
-# metadata = MetaData(schema="testCall")      # default schema for all tables
-# Connection details (adjust if needed)
-# DB_NAME = "testCallerxxx"
-# DB_USER = "postgres123"
-# DB_PASS = ""
-# DB_HOST = "localhost"
-# DB_PORT = "5432"
+# Use the DATABASE_URL from the centralized settings
+engine = create_engine(settings.DATABASE_URL, echo=settings.DEBUG_MODE, future=True)
 
-# psycopg2 (for raw SQL if still needed)
-# def get_pg_connection():
-#     return psycopg2.connect(
-#         dbname=DB_NAME,
-#         user=DB_USER,
-#         password=DB_PASS,
-#         host=DB_HOST,
-#         port=DB_PORT
-#     )
-
-# DB URL
-DATABASE_URL = "postgresql://postgres:c6emcpostgres@localhost:5432/testCaller"
-
-engine = create_engine(DATABASE_URL, echo=True, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base for declarative models

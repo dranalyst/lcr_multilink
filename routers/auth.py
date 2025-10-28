@@ -16,6 +16,7 @@ from slowapi.util import get_remote_address
 from core.rate_limit import limiter
 import asyncio
 import uuid
+from config import settings
 
 
 router = APIRouter(
@@ -24,25 +25,12 @@ router = APIRouter(
 )
 
 # --------------------------------------------------------------------
-# CONFIG
+# CONFIG FROM SETTINGS
 # --------------------------------------------------------------------
-SECRET_KEY = "+i1u41234567890123456789012345678901234567I="
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 7
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
 
-
-# --------------------------------------------------------------------
-# DEPENDENCIES
-# --------------------------------------------------------------------
-# def get_db():
-#     db = SessionLocal()
-#     try:
-#         yield db
-#     finally:
-#         db.close()
 
 
 # --------------------------------------------------------------------
@@ -55,7 +43,7 @@ def create_access_token(phoneNumber: str, user_id: int, expires_delta: timedelta
               "exp": now + expires_delta}
     # expires = datetime.now(timezone.utc) + expires_delta
     # encode.update({"exp": expires})
-    return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def authenticate_phoneuser(username: str, password: str, db: Session):
@@ -99,7 +87,7 @@ class ChangePasswordRequest(BaseModel):
 def get_current_user(token: Annotated[str, Depends(oauth2_bearer)], db: Annotated[Session, Depends(get_db)]):
     """Decode JWT and return a DB-bound user object (no new session)."""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: int = payload.get("id")
         issued_at = payload.get("iat")
 
@@ -162,7 +150,7 @@ async def login_for_access_token(
 
     token = create_access_token( phoneNumber = user.phoneNumber,
                                 user_id = user.id,
-                                expires_delta = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+                                expires_delta = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
     )
     user.last_login_date = datetime.now(timezone.utc)
     user.last_login_ip = client_host

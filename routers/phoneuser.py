@@ -3,7 +3,8 @@ import status
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose.exceptions import JWTError
 from sqlalchemy.orm import Session
-from .auth import bcrypt_context, SECRET_KEY, ALGORITHM, oauth2_bearer, get_current_user
+from .auth import bcrypt_context, oauth2_bearer, get_current_user
+from config import settings
 from schemas.phoneuser import PhoneUserCreate
 from models.phoneuser import PhoneUsers
 from database import get_db, SessionLocal
