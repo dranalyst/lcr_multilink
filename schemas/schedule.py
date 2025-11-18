@@ -1,17 +1,22 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional, Literal
+
+from pydantic import BaseModel, ConfigDict
+
 
 class ScheduleOut(BaseModel):
     id: int
     aNum: Optional[str] = None
     bNum: str
     status: int
-    schedule_sync_date: Optional[datetime] = None
-    status_change_date: Optional[datetime] = None
+    scheduled_time: datetime
+    # 0 = mobile, 1 = asterisk
+    is_asterisk_engine: int
+    attempts: int
+    max_retries: int
 
-    class Config:
-        orm_mode = True
+    # For Pydantic v2: allow reading from SQLAlchemy ORM objects
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MarkCalledBatchPayload(BaseModel):

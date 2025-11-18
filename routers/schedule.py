@@ -28,13 +28,13 @@ async def get_numbers(
       - If bNum has PhoneUsers(user_type==0 AND call_direction==True) → exclude.
     """
 
-    # current_user = db.merge(current_user)
     user_phone = current_user.phoneNumber
 
     # ✅ Step 1: Fetch more than limit to allow for filtering
     schedules = (
         db.query(Schedule)
-        .filter(Schedule.aNum == user_phone, Schedule.status.in_([-1, 0]))
+        .filter(Schedule.aNum == user_phone, Schedule.status.in_([-1, 0]),
+                Schedule.is_asterisk_engine == 0)
         .order_by(Schedule.id.asc())
         .limit(limit * 4)   # small buffer before filtering
         .all()
@@ -100,6 +100,10 @@ async def get_numbers(
             "aNum": r.aNum,
             "bNum": r.bNum,
             "status": r.status,
+            "scheduled_time": r.scheduled_time,
+            "is_asterisk_engine": r.is_asterisk_engine,
+            "attempts": r.attempts,
+            "max_retries": r.max_retries,
         }
         for r in filtered[:limit]
     ]
