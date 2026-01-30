@@ -104,6 +104,7 @@ async def get_numbers(
             "is_asterisk_engine": r.is_asterisk_engine,
             "attempts": r.attempts,
             "max_retries": r.max_retries,
+            "destination_gw": r.destination_gw,
         }
         for r in filtered[:limit]
     ]

@@ -6,6 +6,8 @@ import pycountry
 from phonenumbers import carrier
 from sqlalchemy import Column, Integer, String, DateTime
 from database import Base
+from utils.normalize_msisdn import normalize_msisdn
+
 
 
 class InboundLogs(Base):
@@ -25,6 +27,26 @@ class InboundLogs(Base):
     b_country = Column(String(100), nullable=False, default="Unknown")
     b_operator_name = Column(String(100), nullable=False, default="Unknown")
 
+    # def _country_name_to_iso2_fast(country_name: str | None) -> str | None:
+    #     if not country_name:
+    #         return None
+    #
+    #     name = country_name.strip()
+    #     if not name:
+    #         return None
+    #
+    #     # ✅ FAST PATH: exact name match (O(1)-ish)
+    #     c = pycountry.countries.get(name=name)
+    #     if c:
+    #         return c.alpha_2
+    #
+    #     # ✅ fallback (rare): supports alt spellings like "Cote d'Ivoire"
+    #     try:
+    #         return pycountry.countries.lookup(name).alpha_2
+    #     except LookupError:
+    #         return None
+
+
     def __init__(self, **kwargs):
         """
         Automatically populate:
@@ -37,23 +59,21 @@ class InboundLogs(Base):
         a_num = kwargs.get("aNum")
         b_num = kwargs.get("bNum")
 
-        # --- Normalize aNum first ---
-        parsed_a = None
-        if a_num:
+
+        # --- Normalize aNum ---
+
+        if b_num:
             try:
-                parsed_a = phonenumbers.parse(a_num, None)
-                if phonenumbers.is_valid_number(parsed_a):
-                    self.normalized_a_num = phonenumbers.format_number(
-                        parsed_a, phonenumbers.PhoneNumberFormat.E164
-                    )
-                else:
-                    self.normalized_a_num = a_num  # fallback to raw
+                iso2 = phonenumbers.region_code_for_number(phonenumbers.parse(f"+{str(b_num).lstrip('+')}", None))
             except Exception:
-                self.normalized_a_num = a_num
+                iso2 = "XX"
+
+        if a_num:
+            self.normalized_a_num = normalize_msisdn(a_num, iso2) or a_num
         else:
             self.normalized_a_num = None
 
-        # --- Derive country & operator from normalized_a_num ---
+
         if self.normalized_a_num:
             try:
                 parsed_norm = phonenumbers.parse(self.normalized_a_num, None)
@@ -67,6 +87,7 @@ class InboundLogs(Base):
         else:
             self.a_country = "Unknown"
             self.a_operator_name = "Unknown"
+
 
         # --- Derive bNum info ---
         if b_num:
@@ -82,15 +103,3 @@ class InboundLogs(Base):
         else:
             self.b_country = "Unknown"
             self.b_operator_name = "Unknown"
-
-
-
-# class InboundLogs(Base):
-#     __tablename__ = "inbound_cdr_logs"
-#
-#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-#     aNum = Column("a_num", String(32), nullable=False)   # maps to a_num
-#     bNum = Column("b_num", String(32), nullable=False)   # maps to b_num
-#     starttime = Column(DateTime(timezone=True), nullable=False)
-#     duration = Column(Integer, nullable=False)
-#     status = Column(String, nullable=False)

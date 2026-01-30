@@ -1,125 +1,136 @@
-# app/services/asterisk_ami.py
-
-from typing import Any, Dict, Optional
-
+# services/asterisk_ami.py
+import os
+import re
+from typing import Any, Dict
 from asterisk.ami import AMIClient, SimpleAction
 from schemas.asterisk_logs import AsteriskCallOrder
 
+ASTERISK_HOST = os.getenv("ASTERISK_HOST", "")
+ASTERISK_PORT = int(os.getenv("ASTERISK_PORT", "5038"))
+ASTERISK_USERNAME = os.getenv("ASTERISK_USERNAME", "fastapi")
+ASTERISK_PASSWORD = os.getenv("ASTERISK_PASSWORD")
 
-# -------------------------------------------------------------------
-# Global AMI settings (dev)
-# TODO: move these to environment variables / settings
-# -------------------------------------------------------------------
-# If FastAPI runs on your Mac and Asterisk is in Docker mapped to 5038:
-ASTERISK_HOST = "127.0.0.1"
-ASTERISK_PORT = 5038
+COMMPEAK_CONTEXT = os.getenv("COMMPEAK_CONTEXT", "from-internal")
+COMMPEAK_PREFIX = os.getenv("COMMPEAK_PREFIX", "9")
+COMMPEAK_APP = os.getenv("COMMPEAK_APP", "Playback")
+COMMPEAK_APP_DATA = os.getenv("COMMPEAK_APP_DATA", "demo-congrats")
 
-# Must match manager.conf user/secret:
-# [fastapi]
-# secret = YOUR_REAL_SECRET_HERE
-ASTERISK_USERNAME = "fastapi"
-ASTERISK_PASSWORD = "+i1u41234567890123456789012345678901234567I="
-# -------------------------------------------------------------------
+
+def _format_ami_vars(vars_dict: Dict[str, Any]) -> str:
+    parts = []
+    for k, v in (vars_dict or {}).items():
+        if v is None:
+            continue
+        v = str(v).strip()
+        if v == "":
+            continue
+        parts.append(f"{k}={v}")
+    return "|".join(parts)
+
+
+def _digits_only(s: str) -> str:
+    return re.sub(r"\D+", "", s or "")
 
 
 def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
-    """
-    Synchronously originate a call via Asterisk AMI using a typed
-    AsteriskCallOrder object. Intended for new endpoints.
-    """
-    client = AMIClient(address=ASTERISK_HOST, port=ASTERISK_PORT)
+    if not ASTERISK_PASSWORD:
+        raise RuntimeError("ASTERISK_PASSWORD is not set")
 
+    provider = (getattr(order, "trunk", None) or "").strip().lower()  # we use trunk as provider-hint
+
+    src_raw = (getattr(order, "src", "") or "").strip()
+    dst_raw = (getattr(order, "dst", "") or "").strip()
+
+    # Common vars (optional; keep them clean — no pipes inside values)
+    vars_payload = {
+        "__SCHEDULE_ID": str(getattr(order, "schedule_id", 0) or 0),
+        "__CALL_SOURCE": "fastapi",
+        "__CALL_TYPE": "OUT",
+        "__PROVIDER": provider or "",
+        "__SRC_RAW": src_raw,
+        "__DST_RAW": dst_raw,
+    }
+
+    client = AMIClient(address=ASTERISK_HOST, port=ASTERISK_PORT)
     try:
         client.login(username=ASTERISK_USERNAME, secret=ASTERISK_PASSWORD)
 
-        # Build the Asterisk channel to dial
-        # If order.trunk is e.g. "PJSIP/mytrunk", channel becomes "PJSIP/mytrunk/<dst>"
-        if order.trunk:
-            channel = f"{order.trunk}/{order.dst}"
-        else:
-            # Fallback: dial directly via PJSIP/<dst>
-            channel = f"PJSIP/{order.dst}"
+        # ---------------------------------------------------------
+        # Provider-specific originate: COMMPEAK
+        # ---------------------------------------------------------
+        if provider == "commpeak":
+            dst_digits = _digits_only(dst_raw)
+            src_digits = _digits_only(src_raw)
 
+            if not dst_digits or not src_digits:
+                return {
+                    "provider": provider,
+                    "status": "Error",
+                    "message": f"Missing digits: src={src_raw!r} dst={dst_raw!r}",
+                }
+
+            # Exactly matches your working CLI:
+            # Local/9<dst>*<src>@from-internal
+            local_exten = f"{COMMPEAK_PREFIX}{dst_digits}*{src_digits}"
+            channel = f"Local/{local_exten}@{COMMPEAK_CONTEXT}"
+
+            action = SimpleAction(
+                "Originate",
+                Channel=channel,
+                Application=COMMPEAK_APP,
+                Data=COMMPEAK_APP_DATA,
+                CallerID=f"<{src_digits}>",
+                Timeout=str(int(getattr(order, "timeout_ms", 30000) or 30000)),
+                Variable=_format_ami_vars(vars_payload),
+                Async="true",
+            )
+
+            future = client.send_action(action)
+            ami_response = future.response
+            resp_dict = dict(ami_response) if hasattr(ami_response, "items") else {}
+
+            return {
+                "provider": provider,
+                "context": COMMPEAK_CONTEXT,
+                "channel": channel,
+                "status": resp_dict.get("Response"),
+                "message": resp_dict.get("Message"),
+                "actionid": resp_dict.get("ActionID"),
+                "raw": resp_dict if resp_dict else str(ami_response),
+            }
+
+        # ---------------------------------------------------------
+        # Default originate (non-commpeak): Context/Exten
+        # ---------------------------------------------------------
+        context = getattr(order, "context", None) or "from-internal"
+        exten = getattr(order, "exten", None) or (dst_raw or "s")
+
+        channel = f"Local/{exten}@{context}"
         action = SimpleAction(
             "Originate",
             Channel=channel,
-            Context=order.context,
-            Exten=order.exten,
-            Priority=str(order.priority),
-            CallerID=order.caller_id or order.src,
-            Timeout="30000",   # 30 seconds (milliseconds)
-            Variable={
-                # Metadata for dialplan / CDR correlation
-                "SRC": order.src,
-                "DST": order.dst,
-                "SCHEDULE_ID": str(order.schedule_id),
-                "CALL_SOURCE": "fastapi",
-            },
-        )
-
-        response = client.send_action(action, timeout=10)
-
-        return {
-            "status": response.response.get("Response"),
-            "message": response.response.get("Message"),
-            "raw": response.response,
-        }
-
-    finally:
-        try:
-            client.logoff()
-        except Exception:
-            pass
-
-
-# -------------------------------------------------------------------
-# Optional: backward-compatible wrapper (currently NOT used)
-# Keep it if some older code still imports originate_call(...)
-# -------------------------------------------------------------------
-def originate_call(
-    host: str,
-    port: int,
-    username: str,
-    secret: str,
-    channel: str,
-    context: str,
-    exten: str,
-    priority: int,
-    caller_id: str,
-    variables: Optional[dict] = None,
-) -> Dict[str, Any]:
-    """
-    Backward-compatible wrapper for any old code that still calls
-    originate_call(...) directly with raw parameters.
-
-    Right now your routers use `originate_via_ami(order)` instead,
-    so you *could* safely delete this if nothing else imports it.
-    """
-
-    client = AMIClient(address=host, port=port)
-
-    try:
-        client.login(username=username, secret=secret)
-
-        vars_str = ",".join(f"{k}={v}" for k, v in (variables or {}).items())
-
-        action = SimpleAction(
-            "Originate",
-            Channel=channel,      # e.g. SIP/mytrunk/00221xxxxxxx
-            Context=context,      # e.g. from-internal
-            Exten=exten,          # e.g. 's' or another extension in context
-            Priority=str(priority),
-            CallerID=caller_id,
-            Variable=vars_str,
+            Context=context,
+            Exten=exten,
+            Priority=str(getattr(order, "priority", 1) or 1),
+            CallerID=f"<{src_raw or 'unknown'}>",
+            Timeout=str(int(getattr(order, "timeout_ms", 30000) or 30000)),
+            Variable=_format_ami_vars(vars_payload),
             Async="true",
         )
 
-        response = client.send_action(action, timeout=10)
+        future = client.send_action(action)
+        ami_response = future.response
+        resp_dict = dict(ami_response) if hasattr(ami_response, "items") else {}
 
         return {
-            "status": response.response.get("Response"),
-            "message": response.response.get("Message"),
-            "raw": response.response,
+            "provider": provider or "unknown",
+            "context": context,
+            "exten": exten,
+            "channel": channel,
+            "status": resp_dict.get("Response"),
+            "message": resp_dict.get("Message"),
+            "actionid": resp_dict.get("ActionID"),
+            "raw": resp_dict if resp_dict else str(ami_response),
         }
 
     finally:
@@ -127,3 +138,88 @@ def originate_call(
             client.logoff()
         except Exception:
             pass
+
+
+# import os
+# from typing import Any, Dict, Optional
+# from asterisk.ami import AMIClient, SimpleAction
+# from schemas.asterisk_logs import AsteriskCallOrder
+#
+# # ASTERISK_HOST = os.getenv("ASTERISK_HOST", "127.0.0.1")
+# # ASTERISK_PORT = int(os.getenv("ASTERISK_PORT", "5038"))
+# # ASTERISK_USERNAME = os.getenv("ASTERISK_USERNAME", "fastapi")
+# ASTERISK_HOST = os.getenv("ASTERISK_HOST", "")
+# ASTERISK_PORT = int(os.getenv("ASTERISK_PORT", ""))
+# ASTERISK_USERNAME = os.getenv("ASTERISK_USERNAME", "")
+# ASTERISK_PASSWORD = os.getenv("ASTERISK_PASSWORD")
+# # ASTERISK_PASSWORD = "+i1u41234567890123456789012345678901234567I="  # same as manager.conf
+#
+# def _format_ami_vars(vars_dict: Dict[str, Any]) -> str:
+#     """
+#     AMI Originate accepts Variable as:
+#       - multiple Variable: k=v lines, OR
+#       - a single 'k=v|k2=v2' string.
+#     This string form is widely compatible.
+#     """
+#     parts = []
+#     for k, v in (vars_dict or {}).items():
+#         if v is None:
+#             continue
+#         parts.append(f"{k}={v}")
+#     return "|".join(parts)
+#
+#
+# def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
+#     if not ASTERISK_PASSWORD:
+#         raise RuntimeError("ASTERISK_PASSWORD is not set")
+#
+#     client = AMIClient(address=ASTERISK_HOST, port=ASTERISK_PORT)
+#
+#     try:
+#         client.login(username=ASTERISK_USERNAME, secret=ASTERISK_PASSWORD)
+#
+#         # ✅ Always originate to Local channel and let dialplan route (internal vs CommPeak)
+#         # Local channels are referenced as: Local/<exten>@<context>
+#         exten = order.exten or order.dst
+#         context = order.context or "from-fastapi"
+#         channel = f"Local/{exten}@{context}"
+#
+#         vars_payload = {
+#             "SRC": order.src,
+#             "DST": order.dst,
+#             "SCHEDULE_ID": str(order.schedule_id),
+#             "CALL_SOURCE": "fastapi",
+#             # Optional override if you want dialplan to force a trunk
+#             "FORCE_TRUNK": order.trunk or "",
+#         }
+#
+#         action = SimpleAction(
+#             "Originate",
+#             Channel=channel,
+#             Context=context,
+#             Exten=exten,
+#             Priority=str(order.priority or 1),
+#             CallerID=order.caller_id or order.src,
+#             Timeout=str(order.timeout_ms or 30000),
+#             Variable=_format_ami_vars(vars_payload),
+#             Async="true",
+#         )
+#
+#         future = client.send_action(action)
+#         ami_response = future.response
+#
+#         resp_dict = dict(ami_response) if hasattr(ami_response, "items") else {}
+#         return {
+#             "status": resp_dict.get("Response"),
+#             "message": resp_dict.get("Message"),
+#             "actionid": resp_dict.get("ActionID"),
+#             "raw": resp_dict if resp_dict else str(ami_response),
+#         }
+#
+#     finally:
+#         try:
+#             client.logoff()
+#         except Exception:
+#             pass
+#
+

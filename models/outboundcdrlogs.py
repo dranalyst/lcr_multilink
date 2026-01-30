@@ -3,6 +3,7 @@ import pycountry
 from phonenumbers import carrier
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.sql import func
+from sqlalchemy.sql.schema import ForeignKey
 from sqlalchemy.sql.sqltypes import DateTime
 from database import Base
 
@@ -15,6 +16,8 @@ class OutboundLogs(Base):
     starttime = Column(DateTime(timezone=True), nullable=False)
     duration = Column(Integer, nullable=False)
     status = Column(String, nullable=False)
+    teleservice = Column(Integer, nullable=False, default=0)
+    schedule_id = Column(Integer, ForeignKey("schedule.id"), nullable=False)
 
     # 🌍 Country & operator info
     a_country = Column(String(100), nullable=False, default="Unknown")

@@ -16,3 +16,5 @@ class Schedule(Base):
     schedule_sync_date = Column(DateTime(timezone=True), nullable=True)
     attempts = Column(Integer, default=0, nullable=False)
     max_retries = Column(Integer, default=0, nullable=False)
+    destination_gw = Column(String(20), nullable=True)
+    call_provider = Column(String(50), nullable=True)

@@ -8,11 +8,34 @@ class AsteriskCallOrder(BaseModel):
     schedule_id: int
     src: str
     dst: str
+
+    # NEW: tells AMI how to build the channel/context
+    call_provider: Optional[str] = None  # e.g. "commpeak", "gsm"
+
+    # keep as optional override; AMI will decide if None
+    context: Optional[str] = None
+
     caller_id: Optional[str] = None
-    context: str = "from-internal"
     exten: str = "s"
     priority: int = 1
-    trunk: Optional[str] = None   # e.g. "SIP/mytrunk"
+    trunk: Optional[str] = None
+
+    # OPTIONAL: for your CLI-equivalent originate
+    application: Optional[str] = None   # e.g. "Playback"
+    data: Optional[str] = None          # e.g. "demo-congrats"
+
+
+
+# class AsteriskCallOrder(BaseModel):
+#     schedule_id: int
+#     src: str
+#     dst: str
+#     context: str = "from-fastapi"
+#     caller_id: Optional[str] = None
+#     # context: str = "from-internal"
+#     exten: str = "s"
+#     priority: int = 1
+#     trunk: Optional[str] = None   # e.g. "SIP/mytrunk"
 
 
 # -------------------------------------------------------------------
