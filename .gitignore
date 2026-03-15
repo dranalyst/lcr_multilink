@@ -1,4 +1,84 @@
+# ------------------------
+# Existing project rules
+# ------------------------
 /testcode.py
 /call_log_server.py
 /upload/
 /.env
+
+
+# ------------------------
+# Python cache
+# ------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ------------------------
+# Virtual environments
+# ------------------------
+.venv/
+venv/
+env/
+
+# ------------------------
+# Python packaging
+# ------------------------
+build/
+dist/
+*.egg-info/
+
+# ------------------------
+# Environment variables
+# ------------------------
+.env
+.env.*
+*.env
+
+# ------------------------
+# Logs
+# ------------------------
+*.log
+logs/
+uvicorn.log
+
+# ------------------------
+# Database files
+# ------------------------
+*.sqlite3
+*.db
+
+# ------------------------
+# Alembic cache
+# ------------------------
+alembic/versions/__pycache__/
+
+# ------------------------
+# PyCharm / JetBrains
+# ------------------------
+.idea/
+
+# ------------------------
+# VS Code
+# ------------------------
+.vscode/
+
+# ------------------------
+# Testing
+# ------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ------------------------
+# Static / temporary files
+# ------------------------
+*.tmp
+*.bak
+*.swp
+
+# ------------------------
+# OS files
+# ------------------------
+.DS_Store
+Thumbs.db
