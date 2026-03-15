@@ -35,6 +35,8 @@ def extract_country_and_operator(number: Optional[str]) -> Tuple[str, str]:
             # Very light normalization – you can customize later if needed
             if num_str.startswith("00"):
                 num_str = "+" + num_str.removeprefix("00")
+            else:
+                num_str = "+" + num_str
 
         parsed = phonenumbers.parse(num_str, None)
 

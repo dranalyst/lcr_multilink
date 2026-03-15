@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, conint, confloat
 from scripts.schedule_campaign_new import (
     schedule_campaign,
     CallingProfile,
-    OperatorWeight,
+    OperatorWeight, ForcedANumWeight,
 )
 
 # ✅ import the correct function
@@ -36,6 +36,11 @@ class OperatorWeightIn(BaseModel):
     weight: confloat(gt=0)
 
 
+class ForcedANumWeightIn(BaseModel):
+    a_num: str = Field(..., min_length=5, max_length=25, description="Forced caller MSISDN (E.164 preferred)")
+    weight: confloat(gt=0)
+
+
 class NewCampaignRequest(BaseModel):
     total_calls_per_day: conint(gt=0, le=100000) = 100
 
@@ -49,7 +54,10 @@ class NewCampaignRequest(BaseModel):
 
     call_provider: str = Field(default="commpeak", max_length=50)
 
-    # optional: force same caller ID for all scheduled calls
+    # optional: force caller IDs using a weighted mix
+    forced_a_nums: Optional[List[ForcedANumWeightIn]] = None
+
+    # (optional) keep backward compatibility for older clients
     forced_a_num: Optional[str] = Field(default=None, max_length=25)
 
     start_hour_local: conint(ge=0, le=23) = 8
@@ -58,12 +66,21 @@ class NewCampaignRequest(BaseModel):
     expire_at_iso: Optional[str] = None
     global_spacing_sec: conint(ge=0, le=3600) = 1
 
+    answer_pct: conint(ge=0, le=100) = 43
+    min_secs: conint(ge=0, le=3) = 1
+    max_secs: conint(ge=0, le=67) = 37
+
 
 @router.post("/new_campaign", summary="Create/overwrite next 2-week campaign batch (calls-per-day)")
 async def new_campaign(req: NewCampaignRequest):
     dsn = os.getenv("DATABASE_URL")
     if not dsn:
         raise HTTPException(status_code=500, detail="DATABASE_URL is not set on the server")
+
+    # ✅ Backward-compatible: if client sent forced_a_num (single), convert to forced_a_nums (weighted list)
+    forced_list = req.forced_a_nums
+    if (not forced_list) and req.forced_a_num:
+        forced_list = [ForcedANumWeightIn(a_num=req.forced_a_num, weight=1.0)]
 
     try:
         return schedule_campaign(
@@ -85,7 +102,15 @@ async def new_campaign(req: NewCampaignRequest):
             global_spacing_sec=req.global_spacing_sec,
             calling_operator_choices=req.calling_operator_choices,
             call_provider=req.call_provider,
-            forced_a_num=req.forced_a_num,
+
+            # ✅ IMPORTANT: pass only forced_a_nums to the scheduler
+            forced_a_nums=[
+                ForcedANumWeight(a_num=item.a_num, weight=float(item.weight))
+                for item in forced_list
+            ] if forced_list else None,
+            answer_pct=req.answer_pct,
+            min_secs=req.min_secs,
+            max_secs=req.max_secs,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -36,6 +36,7 @@ def ingest_outbound_cdr(payload: AsteriskObCdrIn, db: Session) -> Asterisk_ob_lo
         trunk_used=payload.trunk_used,
         failure_cause=payload.failure_cause,
         latency_ms=payload.latency_ms,
+        call_provider=payload.call_provider,
     )
 
     db.add(record)

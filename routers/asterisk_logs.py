@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette import status
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -177,6 +177,7 @@ async def ingest_asterisk_ob_cdr(
         trunk_used=payload.trunk_used,
         failure_cause=payload.failure_cause,
         latency_ms=payload.latency_ms,
+        call_provider=payload.call_provider,
     )
 
     db.add(cdr)
@@ -286,3 +287,92 @@ async def receive_ib_cdr_via_get(
     db.refresh(cdr)
 
     return {"id": cdr.id, "status": "ok"}
+
+
+
+@router.get("/cdr/ob")
+async def receive_ob_cdr_via_get(
+    # Required / strongly expected from dialplan
+    schedule_id: int = Query(...),
+    start: Optional[str] = None,
+
+    # Numbers + core CDR
+    clid: Optional[str] = None,
+    src: Optional[str] = None,
+    dst: Optional[str] = None,
+
+    duration: Optional[int] = 0,  # Asterisk CDR(duration)
+    billsec: Optional[int] = 0,   # Asterisk CDR(billsec)
+    disposition: Optional[str] = None,
+
+    # Asterisk meta
+    dcontext: Optional[str] = None,
+    channel: Optional[str] = None,
+    dstchannel: Optional[str] = None,
+    lastapp: Optional[str] = None,
+    lastdata: Optional[str] = None,
+    amaflags: Optional[int] = 0,
+    accountcode: Optional[str] = None,
+    userfield: Optional[str] = None,
+    linkedid: Optional[str] = None,
+
+    # Extra fields you pass from dialplan
+    call_provider: Optional[str] = None,
+    call_source: Optional[str] = "asterisk",
+    call_type: Optional[str] = "ob",
+    trunk_used: Optional[str] = None,
+    failure_cause: Optional[str] = None,
+    latency_ms: Optional[int] = None,
+    notes: Optional[str] = None,
+
+    # Optional (keep default if not provided)
+    teleservice: Optional[int] = 0,
+
+    db: Session = Depends(get_db),
+):
+    """
+    Outbound CDR ingest endpoint to be called by Asterisk via CURL (GET).
+    Matches the dialplan: curl -G ... --data-urlencode "..."
+    """
+
+    # Convert "start" into timezone-aware datetime
+    calldate = parse_asterisk_timestamp(start, userfield_tz=userfield)
+
+    # Build the same payload type your existing ingest service expects
+    payload = AsteriskObCdrIn(
+        schedule_id=schedule_id,
+        calldate=calldate,
+
+        clid=clid or "",
+        src=src or "",
+        dst=dst or "",
+
+        # IMPORTANT mapping:
+        # - your DB model uses duration=billsec, extended_duration=duration
+        duration=int(billsec or 0),
+        extended_duration=int(duration or 0),
+
+        status=disposition or "UNKNOWN",
+        teleservice=int(teleservice or 0),
+
+        dcontext=dcontext,
+        channel=channel,
+        dstchannel=dstchannel,
+        lastapp=lastapp,
+        lastdata=lastdata,
+        amaflags=int(amaflags or 0),
+        accountcode=accountcode,
+        userfield=userfield,
+        linkedid=linkedid,
+
+        call_source=call_source,
+        call_type=call_type,
+        trunk_used=trunk_used,
+        failure_cause=failure_cause,
+        latency_ms=latency_ms,
+        notes=notes,
+        call_provider=call_provider,
+    )
+
+    record = ingest_outbound_cdr(payload, db)
+    return {"id": record.id, "status": "ok"}

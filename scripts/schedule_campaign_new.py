@@ -1,7 +1,7 @@
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, time, date
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, List
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -19,11 +19,15 @@ import pycountry
 # ==========================
 CALL_GAP_MIN = timedelta(minutes=3)
 CALL_GAP_MAX = timedelta(minutes=5)
-FORCED_START_OFFSET = timedelta(minutes=10)
+FORCED_START_OFFSET = timedelta(minutes=0)
 BATCH_WINDOW_DAYS = 7
 
 DEFAULT_START_HOUR_LOCAL = 6
 DEFAULT_END_HOUR_LOCAL = 23
+
+DEFAULT_ANSWER_PCT = 43
+DEFAULT_MIN_SECS = 1
+DEFAULT_MAX_SECS = 37
 
 
 # ==========================
@@ -38,6 +42,12 @@ class CallingProfile:
 @dataclass(frozen=True)
 class OperatorWeight:
     operator_name: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class ForcedANumWeight:
+    a_num: str
     weight: float
 
 
@@ -224,6 +234,58 @@ def _random_bnum_gap() -> timedelta:
     hi = int(CALL_GAP_MAX.total_seconds())
     return timedelta(seconds=random.randint(lo, hi))
 
+
+def _country_name_for_msisdn(num_e164: str) -> str:
+    try:
+        p = phonenumbers.parse(num_e164, None)
+        iso2 = phonenumbers.region_code_for_number(p) or "--"
+        return iso2_to_country_name(iso2)
+    except Exception:
+        return "Unknown"
+
+
+def _clamp_int(v: Optional[int], lo: int, hi: int, default: int) -> int:
+    try:
+        x = int(v)
+    except Exception:
+        return default
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+
+
+def _planned_duration_seconds(
+    *,
+    is_asterisk_engine: int,
+    answer_pct: int,
+    min_secs: int,
+    max_secs: int,
+) -> int:
+    """
+    Planned duration policy:
+      - if is_asterisk_engine != 1 => duration 0
+      - else answer_pct% rows get random duration in [min_secs, max_secs]
+      - remaining rows => duration 0
+    """
+    if int(is_asterisk_engine) != 1:
+        return 0
+
+    if answer_pct <= 0 or max_secs <= 0:
+        return 0
+
+    # roll 1..100
+    if random.randint(1, 100) > int(answer_pct):
+        return 0
+
+    # if min==max it's deterministic
+    if max_secs <= min_secs:
+        return max(0, int(min_secs))
+
+    return random.randint(int(min_secs), int(max_secs))
+
+
 # ==========================
 # MAIN SCHEDULER
 # ==========================
@@ -241,7 +303,10 @@ def schedule_campaign(
     expire_at_iso: Optional[str] = None,
     global_spacing_sec: int = 1,
     calling_operator_choices: Optional[dict[str, list[str]]] = None,  # NEW
-    forced_a_num: Optional[str] = None,
+    forced_a_nums: Optional[list[ForcedANumWeight]] = None,
+    answer_pct: int = 43,
+    min_secs: int = 1,
+    max_secs: int = 37,
 ) -> dict[str, Any]:
     if total_calls_per_day <= 0:
         raise ValueError("total_calls_per_day must be > 0")
@@ -254,13 +319,57 @@ def schedule_campaign(
     if not call_provider:
         raise ValueError("call_provider is required")
 
+    try:
+        answer_pct = int(answer_pct)
+        min_secs = int(min_secs)
+        max_secs = int(max_secs)
+    except Exception:
+        raise ValueError("answer_pct, min_secs, max_secs must be integers")
+
+    if answer_pct < 0 or answer_pct > 100:
+        raise ValueError("answer_pct must be between 0 and 100")
+    if min_secs < 0 or max_secs < 0:
+        raise ValueError("min_secs/max_secs must be >= 0")
+    if max_secs < min_secs:
+        raise ValueError("max_secs must be >= min_secs")
+
+
     now_utc = datetime.now(timezone.utc)
 
-    # Normalize forced caller ID once
-    if forced_a_num:
-        forced_a_num = forced_a_num.strip()
-        if not forced_a_num.startswith("+"):
-            forced_a_num = "+" + forced_a_num
+    answer_pct = _clamp_int(answer_pct, 0, 100, DEFAULT_ANSWER_PCT)
+    min_secs = _clamp_int(min_secs, 0, 3, DEFAULT_MIN_SECS)
+    max_secs = _clamp_int(max_secs, 0, 67, DEFAULT_MAX_SECS)
+    if max_secs < min_secs:
+        max_secs = min_secs
+
+    # Normalize + validate forced caller IDs (weighted)
+    forced_anum_weights: list[tuple[str, float]] = []
+    if forced_a_nums:
+        for item in forced_a_nums:
+            num = (item.a_num or "").strip()
+            if not num:
+                continue
+
+            # normalize to +E.164-ish
+            if not num.startswith("+"):
+                num = "+" + num
+
+            # validate number format
+            try:
+                parsed = phonenumbers.parse(num, None)
+                if not phonenumbers.is_valid_number(parsed):
+                    continue
+            except Exception:
+                continue
+
+            w = float(item.weight or 0)
+            if w > 0:
+                forced_anum_weights.append((num, w))
+
+        if not forced_anum_weights:
+            raise ValueError(
+                "forced_a_nums was provided but no valid (a_num, weight>0) entries found"
+            )
 
     # expiry default: now + 1 year
     if expire_at_iso:
@@ -440,6 +549,12 @@ def schedule_campaign(
             calling_plan = expand_shuffle(calling_counts_day)      # list of iso2
             operator_plan = expand_shuffle(operator_counts_day)    # list of dst operator_name
 
+            forced_anum_plan: Optional[list[str]] = None
+            if forced_anum_weights:
+                forced_counts_day = largest_remainder_counts(forced_anum_weights, total_calls_per_day)
+                forced_anum_plan = expand_shuffle(forced_counts_day)
+
+
             day_start_utc, day_end_utc = _local_window_to_utc_range(
                 day_local, start_hour_local, end_hour_local, dst_tz
             )
@@ -453,10 +568,9 @@ def schedule_campaign(
             for i in range(total_calls_per_day):
                 a_iso2 = calling_plan[i]
 
-                if forced_a_num:
-                    # ✅ Force same caller ID for all scheduled calls
-                    a_num = forced_a_num
-                    a_country = iso2_to_country_name(a_iso2)
+                if forced_anum_plan:
+                    a_num = forced_anum_plan[i]
+                    a_country = _country_name_for_msisdn(a_num)
                     matched_op = None
                 else:
                     allowed_ops = None
@@ -464,9 +578,7 @@ def schedule_campaign(
                         allowed_ops = calling_operator_choices.get(a_iso2.upper()) or calling_operator_choices.get(
                             a_iso2.lower())
 
-                    a_num, matched_op = _random_anum_for_iso2_with_operator_choices(
-                        a_iso2, allowed_ops
-                    )
+                    a_num, matched_op = _random_anum_for_iso2_with_operator_choices(a_iso2, allowed_ops)
                     a_country = iso2_to_country_name(a_iso2)
 
                 dst_op = operator_plan[i]
@@ -480,6 +592,14 @@ def schedule_campaign(
                 sched_time = max(candidate, allowed)
                 bnums_next_allowed[b_num_norm] = sched_time + _random_bnum_gap()
 
+                is_asterisk_engine = 1  # you currently hardcode 1 in rows
+                planned_duration = _planned_duration_seconds(
+                    is_asterisk_engine=is_asterisk_engine,
+                    answer_pct=answer_pct,
+                    min_secs=min_secs,
+                    max_secs=max_secs,
+                )
+
                 rows.append((
                     batch_id,
                     a_num,
@@ -487,16 +607,20 @@ def schedule_campaign(
                     b_num_norm,
                     b_country_name,
                     dst_op,
-                    0,
-                    1,
+                    0,  # status
+                    is_asterisk_engine,  # is_asterisk_engine
                     sched_time,
-                    0,
-                    0,
+                    planned_duration,  # ✅ [CHANGE AREA #4] duration
+                    0,  # attempts
+                    0,  # max_retries
                     expire_at,
                     call_provider,
                     destination_gw,
                     start_hour_local,
                     end_hour_local,
+                    answer_pct,  # ✅ store policy too
+                    min_secs,
+                    max_secs,
                 ))
 
                 inserted_min_utc = sched_time if inserted_min_utc is None else min(inserted_min_utc, sched_time)
@@ -506,8 +630,9 @@ def schedule_campaign(
         INSERT INTO public.schedule
           ("batchId","aNum","aCountry","bNum","bCountry",
            b_operator_name,status,is_asterisk_engine,
-           scheduled_time,attempts,max_retries,expire_at,
-           call_provider,destination_gw, start_hour_local,end_hour_local)
+           scheduled_time,planned_duration,attempts,max_retries,expire_at,
+           call_provider,destination_gw, start_hour_local,end_hour_local,
+           answer_pct,min_secs,max_secs)
         VALUES %s
         """
         execute_values(cur, sql, rows, page_size=2000)

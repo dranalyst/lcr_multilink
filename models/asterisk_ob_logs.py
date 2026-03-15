@@ -33,10 +33,11 @@ class Asterisk_ob_logs(Base):
     accountcode = Column("accountcode", String(100), nullable=True)
     userfield = Column("userfield", String(100), nullable=True)
     linkedid = Column("linkedid", String(32), nullable=True)
+    call_provider = Column("call_provider", String(50), nullable=True)
 
     # Higher-level classification
     call_source = Column("call_source", String(20), nullable=True)
-    region = Column("region", String(50), nullable=True)
+    #region = Column("region", String(50), nullable=True)
     call_type = Column("call_type", String(50), nullable=True)
     trunk_used = Column("trunk_used", String(50), nullable=True)
     failure_cause = Column("failure_cause", String(100), nullable=True)

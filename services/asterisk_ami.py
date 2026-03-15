@@ -36,10 +36,17 @@ def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
     if not ASTERISK_PASSWORD:
         raise RuntimeError("ASTERISK_PASSWORD is not set")
 
-    provider = (getattr(order, "trunk", None) or "").strip().lower()  # we use trunk as provider-hint
+    # provider = (getattr(order, "trunk", None) or "").strip().lower()  # we use trunk as provider-hint
+    provider = (
+            (getattr(order, "call_provider", None) or "").strip().lower()
+            or (getattr(order, "trunk", None) or "").strip().lower()
+    )
 
     src_raw = (getattr(order, "src", "") or "").strip()
     dst_raw = (getattr(order, "dst", "") or "").strip()
+
+    planned_duration = int(getattr(order, "planned_duration", 0) or 0)
+    destination_gw = (getattr(order, "destination_gw", "") or "").strip()
 
     # Common vars (optional; keep them clean — no pipes inside values)
     vars_payload = {
@@ -49,6 +56,8 @@ def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
         "__PROVIDER": provider or "",
         "__SRC_RAW": src_raw,
         "__DST_RAW": dst_raw,
+        "__PLANNED_DURATION": str(planned_duration),
+        "__DESTINATION_GW": destination_gw,
     }
 
     client = AMIClient(address=ASTERISK_HOST, port=ASTERISK_PORT)
@@ -139,87 +148,4 @@ def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
         except Exception:
             pass
 
-
-# import os
-# from typing import Any, Dict, Optional
-# from asterisk.ami import AMIClient, SimpleAction
-# from schemas.asterisk_logs import AsteriskCallOrder
-#
-# # ASTERISK_HOST = os.getenv("ASTERISK_HOST", "127.0.0.1")
-# # ASTERISK_PORT = int(os.getenv("ASTERISK_PORT", "5038"))
-# # ASTERISK_USERNAME = os.getenv("ASTERISK_USERNAME", "fastapi")
-# ASTERISK_HOST = os.getenv("ASTERISK_HOST", "")
-# ASTERISK_PORT = int(os.getenv("ASTERISK_PORT", ""))
-# ASTERISK_USERNAME = os.getenv("ASTERISK_USERNAME", "")
-# ASTERISK_PASSWORD = os.getenv("ASTERISK_PASSWORD")
-# # ASTERISK_PASSWORD = "+i1u41234567890123456789012345678901234567I="  # same as manager.conf
-#
-# def _format_ami_vars(vars_dict: Dict[str, Any]) -> str:
-#     """
-#     AMI Originate accepts Variable as:
-#       - multiple Variable: k=v lines, OR
-#       - a single 'k=v|k2=v2' string.
-#     This string form is widely compatible.
-#     """
-#     parts = []
-#     for k, v in (vars_dict or {}).items():
-#         if v is None:
-#             continue
-#         parts.append(f"{k}={v}")
-#     return "|".join(parts)
-#
-#
-# def originate_via_ami(order: AsteriskCallOrder) -> Dict[str, Any]:
-#     if not ASTERISK_PASSWORD:
-#         raise RuntimeError("ASTERISK_PASSWORD is not set")
-#
-#     client = AMIClient(address=ASTERISK_HOST, port=ASTERISK_PORT)
-#
-#     try:
-#         client.login(username=ASTERISK_USERNAME, secret=ASTERISK_PASSWORD)
-#
-#         # ✅ Always originate to Local channel and let dialplan route (internal vs CommPeak)
-#         # Local channels are referenced as: Local/<exten>@<context>
-#         exten = order.exten or order.dst
-#         context = order.context or "from-fastapi"
-#         channel = f"Local/{exten}@{context}"
-#
-#         vars_payload = {
-#             "SRC": order.src,
-#             "DST": order.dst,
-#             "SCHEDULE_ID": str(order.schedule_id),
-#             "CALL_SOURCE": "fastapi",
-#             # Optional override if you want dialplan to force a trunk
-#             "FORCE_TRUNK": order.trunk or "",
-#         }
-#
-#         action = SimpleAction(
-#             "Originate",
-#             Channel=channel,
-#             Context=context,
-#             Exten=exten,
-#             Priority=str(order.priority or 1),
-#             CallerID=order.caller_id or order.src,
-#             Timeout=str(order.timeout_ms or 30000),
-#             Variable=_format_ami_vars(vars_payload),
-#             Async="true",
-#         )
-#
-#         future = client.send_action(action)
-#         ami_response = future.response
-#
-#         resp_dict = dict(ami_response) if hasattr(ami_response, "items") else {}
-#         return {
-#             "status": resp_dict.get("Response"),
-#             "message": resp_dict.get("Message"),
-#             "actionid": resp_dict.get("ActionID"),
-#             "raw": resp_dict if resp_dict else str(ami_response),
-#         }
-#
-#     finally:
-#         try:
-#             client.logoff()
-#         except Exception:
-#             pass
-#
 

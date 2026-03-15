@@ -18,3 +18,4 @@ class Schedule(Base):
     max_retries = Column(Integer, default=0, nullable=False)
     destination_gw = Column(String(20), nullable=True)
     call_provider = Column(String(50), nullable=True)
+    planned_duration = Column(Integer, default=0, nullable=False)

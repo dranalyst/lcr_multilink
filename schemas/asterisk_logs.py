@@ -24,18 +24,10 @@ class AsteriskCallOrder(BaseModel):
     application: Optional[str] = None   # e.g. "Playback"
     data: Optional[str] = None          # e.g. "demo-congrats"
 
+    planned_duration: Optional[int] = 0
 
+    destination_gw: Optional[str] = None
 
-# class AsteriskCallOrder(BaseModel):
-#     schedule_id: int
-#     src: str
-#     dst: str
-#     context: str = "from-fastapi"
-#     caller_id: Optional[str] = None
-#     # context: str = "from-internal"
-#     exten: str = "s"
-#     priority: int = 1
-#     trunk: Optional[str] = None   # e.g. "SIP/mytrunk"
 
 
 # -------------------------------------------------------------------
@@ -78,6 +70,7 @@ class AsteriskCdrBase(BaseModel):
 # -------------------------------------------------------------------
 class AsteriskObCdrIn(AsteriskCdrBase):
     schedule_id: int
+    call_provider: str
 
 
 # -------------------------------------------------------------------
